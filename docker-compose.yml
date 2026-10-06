@@ -1,0 +1,13 @@
+services:
+  md-reader:
+    build: .
+    container_name: md-reader
+    ports:
+      - "2453:8000"
+    volumes:
+      # 改成你自己的 Markdown 目录（宿主机绝对路径）
+      - ./notes:/data
+    environment:
+      - ROOT_DIR=/data
+      - PORT=8000
+    restart: unless-stopped
