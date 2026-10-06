@@ -39,7 +39,7 @@
             v-for="(m, i) in r.matches"
             :key="i"
             class="result-line"
-            @click="$emit('open', r.path, m.line)"
+            @click="$emit('open', r.path, m.line, m.text)"
           >
             <span class="line-no">{{ m.line }}</span>
             <span class="line-text" v-html="highlight(m.text)"></span>

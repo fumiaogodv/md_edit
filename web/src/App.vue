@@ -28,7 +28,7 @@
 
     <div class="main">
       <!-- 左侧文件树 -->
-      <aside class="sidebar left">
+      <aside class="sidebar left" :style="{ width: leftWidth + 'px' }">
         <div class="panel-head">
           <span class="panel-title">文件</span>
         </div>
@@ -36,6 +36,9 @@
           <FileTree :active-path="currentPath" @select="openFile" />
         </div>
       </aside>
+
+      <!-- 左侧拖拽条 -->
+      <div class="resize-handle" @mousedown="startResize('left', $event)"></div>
 
       <!-- 中间内容区 -->
       <section class="content">
@@ -52,13 +55,16 @@
           v-else
           ref="viewRef"
           :content="fileContent"
-          :highlight-line="highlightLine"
+          :highlight-text="highlightText"
           @outline="onOutline"
         />
       </section>
 
+      <!-- 右侧拖拽条 -->
+      <div class="resize-handle" @mousedown="startResize('right', $event)"></div>
+
       <!-- 右侧大纲（当前文件一二级标题） -->
-      <aside class="sidebar right">
+      <aside class="sidebar right" :style="{ width: rightWidth + 'px' }">
         <div class="panel-head">
           <span class="panel-title">目录</span>
           <span v-if="outline.length" class="badge badge--muted">{{ outline.length }}</span>
@@ -76,7 +82,7 @@
 </template>
 
 <script>
-import { defineComponent, ref, nextTick } from 'vue'
+import { defineComponent, ref } from 'vue'
 import FileTree from './components/FileTree.vue'
 import MarkdownView from './components/MarkdownView.vue'
 import MarkdownEditor from './components/MarkdownEditor.vue'
@@ -102,14 +108,54 @@ export default {
     const saving = ref(false)
     const outline = ref([])
     const activeOutline = ref(-1)
-    const highlightLine = ref(0)
+    const highlightText = ref('')
     const originalContent = ref('')
+    // 侧栏宽度（可拖拽调整）
+    const leftWidth = ref(264)
+    const rightWidth = ref(240)
+    let resizeType = null
+    let startX = 0
+    let startWidth = 0
+
+    // 拖拽调整侧栏宽度
+    function startResize(type, e) {
+      resizeType = type
+      startX = e.clientX
+      startWidth = type === 'left' ? leftWidth.value : rightWidth.value
+      document.addEventListener('mousemove', onResizeMove)
+      document.addEventListener('mouseup', onResizeEnd)
+      document.body.style.cursor = 'col-resize'
+      document.body.style.userSelect = 'none'
+      e.preventDefault()
+    }
+
+    function onResizeMove(e) {
+      const delta = e.clientX - startX
+      let newWidth = startWidth + delta
+      // 限制最小/最大宽度
+      newWidth = Math.max(160, Math.min(600, newWidth))
+      if (resizeType === 'left') {
+        leftWidth.value = newWidth
+      } else if (resizeType === 'right') {
+        // 右侧拖拽条向左拖动 = 右侧栏变宽
+        rightWidth.value = startWidth - delta
+        rightWidth.value = Math.max(160, Math.min(600, rightWidth.value))
+      }
+    }
+
+    function onResizeEnd() {
+      resizeType = null
+      document.removeEventListener('mousemove', onResizeMove)
+      document.removeEventListener('mouseup', onResizeEnd)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
 
     async function openFile(item) {
       currentPath.value = item.path
       currentName.value = item.name
       editing.value = false
-      highlightLine.value = 0
+      highlightText.value = ''
       try {
         const data = await api.getFile(item.path)
         fileContent.value = data.content
@@ -119,33 +165,23 @@ export default {
       }
     }
 
-    async function openByPath(path, line = 0) {
+    async function openByPath(path, line = 0, text = '') {
       const name = path.split('/').pop()
       currentPath.value = path
       currentName.value = name
       editing.value = false
-      highlightLine.value = line
+      highlightText.value = text || ''
       try {
         const data = await api.getFile(path)
         fileContent.value = data.content
-        if (line) {
-          nextTick(() => {
-            const el = viewRef.value?.$el?.querySelector('.markdown-body')
-            if (el) {
-              const lines = el.innerText.split('\n')
-              const ratio = Math.min(line / Math.max(lines.length, 1), 1)
-              el.scrollTop = ratio * el.scrollHeight
-            }
-          })
-        }
       } catch (e) {
         console.error('读取文件失败:', e)
         alert(e.message || '读取文件失败')
       }
     }
 
-    function onSearchOpen(path, line) {
-      openByPath(path, line)
+    function onSearchOpen(path, line, text) {
+      openByPath(path, line, text)
     }
 
     function startEdit() {
@@ -189,8 +225,11 @@ export default {
       saving,
       outline,
       activeOutline,
-      highlightLine,
+      highlightText,
       viewRef,
+      leftWidth,
+      rightWidth,
+      startResize,
       openFile,
       onSearchOpen,
       startEdit,
@@ -263,12 +302,21 @@ export default {
   flex-direction: column;
 }
 .sidebar.left {
-  width: 264px;
   border-right: 1px solid var(--border);
 }
 .sidebar.right {
-  width: 240px;
   border-left: 1px solid var(--border);
+}
+.resize-handle {
+  width: 5px;
+  flex-shrink: 0;
+  cursor: col-resize;
+  background: transparent;
+  transition: background 0.15s;
+}
+.resize-handle:hover,
+.resize-handle:active {
+  background: var(--accent);
 }
 .panel-head {
   display: flex;

@@ -13,12 +13,13 @@ export default {
   name: 'MarkdownView',
   props: {
     content: { type: String, default: '' },
-    highlightLine: { type: Number, default: 0 },
+    highlightText: { type: String, default: '' },
   },
   emits: ['outline'],
   setup(props, { emit }) {
     const body = ref(null)
     const html = ref('')
+    let highlightedEl = null
 
     watch(
       () => props.content,
@@ -45,13 +46,38 @@ export default {
       emit('outline', outline)
     }
 
-    // 搜索定位：高亮命中行
+    // 搜索定位：根据命中行文本精确匹配 DOM 元素，滚动 + 高亮
     function scrollToHighlight() {
-      if (!props.highlightLine || !body.value) return
-      // 通过文本行号定位困难，这里简单滚动到顶部并提示
-      // 实际定位：遍历段落，按换行数估算
-      const target = body.value.querySelector('h1, h2, h3, p, li')
-      if (target) target.scrollIntoView({ behavior: 'smooth' })
+      if (!props.highlightText || !body.value) return
+      const text = props.highlightText.trim()
+      if (!text) return
+
+      // 清除上一次高亮
+      clearHighlight()
+
+      // 在块级元素中查找包含该文本的元素
+      const blocks = body.value.querySelectorAll('p, li, h1, h2, h3, h4, h5, h6, blockquote, td, th')
+      let target = null
+      for (const el of blocks) {
+        if (el.textContent.includes(text)) {
+          target = el
+          break
+        }
+      }
+
+      if (!target) return
+
+      // 高亮该元素
+      highlightedEl = target
+      target.classList.add('search-hit')
+      target.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+
+    function clearHighlight() {
+      if (highlightedEl) {
+        highlightedEl.classList.remove('search-hit')
+        highlightedEl = null
+      }
     }
 
     // 暴露跳转方法给父组件
@@ -76,5 +102,14 @@ export default {
   text-align: center;
   margin-top: 40px;
   font-size: 15px;
+}
+</style>
+
+<style>
+/* 搜索命中高亮（非 scoped，作用于 v-html 内容） */
+.markdown-body .search-hit {
+  background: var(--warning-dim);
+  border-radius: 4px;
+  box-shadow: 0 0 0 3px var(--warning-dim);
 }
 </style>
