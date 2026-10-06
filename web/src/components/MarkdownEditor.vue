@@ -2,17 +2,19 @@
   <div class="md-editor">
     <div ref="editorHost" class="editor-host"></div>
     <div class="editor-toolbar">
-      <n-button size="small" type="primary" :loading="saving" @click="save">
-        保存
-      </n-button>
-      <n-button size="small" @click="$emit('cancel')">取消</n-button>
+      <button class="btn btn--primary btn--sm" :disabled="saving" @click="save">
+        {{ saving ? '保存中...' : '保存' }}
+      </button>
+      <button class="btn btn--sm" @click="$emit('cancel')">取消</button>
+      <span class="editor-hint">Markdown 语法编辑，Ctrl+S 保存</span>
     </div>
   </div>
 </template>
 
 <script>
 import { defineComponent, ref, onMounted, onBeforeUnmount } from 'vue'
-import { EditorView, basicSetup } from 'codemirror'
+import { EditorView, keymap } from '@codemirror/view'
+import { basicSetup } from 'codemirror'
 import { markdown } from '@codemirror/lang-markdown'
 
 export default {
@@ -26,6 +28,10 @@ export default {
     const editorHost = ref(null)
     let view = null
 
+    function doSave() {
+      if (view) emit('save', view.state.doc.toString())
+    }
+
     onMounted(() => {
       view = new EditorView({
         parent: editorHost.value,
@@ -33,13 +39,31 @@ export default {
         extensions: [
           basicSetup,
           markdown(),
+          keymap.of([
+            { key: 'Mod-s', run: () => { doSave(); return true } },
+          ]),
           EditorView.theme({
-            '&': { height: '100%', fontSize: '14px' },
-            '.cm-scroller': {
-              fontFamily: "'SFMono-Regular', Consolas, monospace",
+            '&': {
+              height: '100%',
+              fontSize: '14px',
+              backgroundColor: 'var(--bg)',
+              color: 'var(--text)',
             },
+            '.cm-scroller': {
+              fontFamily: "'SFMono-Regular', Consolas, 'Courier New', monospace",
+              lineHeight: '1.6',
+            },
+            '.cm-content': { caretColor: 'var(--accent)' },
+            '.cm-cursor': { borderLeftColor: 'var(--accent)' },
+            '.cm-gutters': {
+              backgroundColor: 'var(--bg)',
+              color: 'var(--text-faint)',
+              border: 'none',
+            },
+            '.cm-activeLine': { backgroundColor: 'var(--bg-hover)' },
+            '.cm-activeLineGutter': { backgroundColor: 'var(--bg-hover)' },
+            '&.cm-focused': { outline: 'none' },
           }),
-          EditorView.updateListener.of(() => {}),
         ],
       })
     })
@@ -48,11 +72,7 @@ export default {
       view?.destroy()
     })
 
-    function save() {
-      emit('save', view.state.doc.toString())
-    }
-
-    return { editorHost, save }
+    return { editorHost, save: doSave }
   },
 }
 </script>
@@ -62,23 +82,23 @@ export default {
   height: 100%;
   display: flex;
   flex-direction: column;
+  background: var(--bg);
 }
 .editor-host {
   flex: 1;
   overflow: hidden;
-  border-bottom: 1px solid var(--border);
-}
-.editor-host :deep(.cm-editor) {
-  height: 100%;
-  background: var(--bg);
-}
-.editor-host :deep(.cm-editor.cm-focused) {
-  outline: none;
 }
 .editor-toolbar {
   padding: 10px 16px;
   display: flex;
+  align-items: center;
   gap: 10px;
-  background: var(--bg-panel);
+  background: var(--bg-side);
+  border-top: 1px solid var(--border);
+}
+.editor-hint {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-faint);
 }
 </style>

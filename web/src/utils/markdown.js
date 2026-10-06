@@ -30,7 +30,14 @@ const md = new MarkdownIt({
     level: [1, 2, 3, 4, 5, 6],
     permalink: false,
   })
-  .use(katex)
+  .use(katex, {
+    // 允许 \text{中文} 等非 ASCII 内容，忽略 strict 警告
+    throwOnError: false,
+    strict: false,
+    trust: true,
+    // 处理 \boxed、\xrightarrow 等，需要更宽的宏支持
+    errorColor: '#f06a6a',
+  })
   .use(taskLists, { enabled: true })
 
 export function renderMarkdown(content) {

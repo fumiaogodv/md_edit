@@ -1,70 +1,82 @@
 <template>
-  <n-config-provider :theme="darkTheme">
-    <n-message-provider>
-      <div class="app">
-        <!-- 顶部工具栏 -->
-        <header class="topbar">
-          <div class="brand">📖 MD Reader</div>
-          <div class="search-wrap">
-            <SearchBar @open="onSearchOpen" />
-          </div>
-          <div class="actions">
-            <n-button
-              v-if="currentPath && !editing"
-              size="small"
-              @click="startEdit"
-            >
-              ✏️ 编辑
-            </n-button>
-            <span v-if="currentPath" class="current-file" :title="currentPath">
-              {{ currentName }}
-            </span>
-          </div>
-        </header>
-
-        <div class="main">
-          <!-- 左侧文件树 -->
-          <aside class="sidebar left">
-            <FileTree :active-path="currentPath" @select="openFile" />
-          </aside>
-
-          <!-- 中间内容区 -->
-          <section class="content">
-            <!-- 编辑模式 -->
-            <MarkdownEditor
-              v-if="editing"
-              :content="fileContent"
-              :saving="saving"
-              @save="saveFile"
-              @cancel="editing = false"
-            />
-            <!-- 阅读模式 -->
-            <MarkdownView
-              v-else
-              ref="viewRef"
-              :content="fileContent"
-              :highlight-line="highlightLine"
-              @outline="onOutline"
-            />
-          </section>
-
-          <!-- 右侧大纲 -->
-          <aside class="sidebar right">
-            <Outline
-              :items="outline"
-              :active-index="activeOutline"
-              @jump="onJump"
-            />
-          </aside>
-        </div>
+  <div class="app">
+    <!-- 顶部工具栏 -->
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-icon">📖</span>
+        <span class="brand-name">MD Reader</span>
       </div>
-    </n-message-provider>
-  </n-config-provider>
+
+      <div class="search-wrap">
+        <SearchBar @open="onSearchOpen" />
+      </div>
+
+      <div class="actions">
+        <span v-if="currentPath" class="current-file" :title="currentPath">
+          {{ currentName }}
+        </span>
+        <button
+          v-if="currentPath && !editing"
+          class="btn btn--primary btn--sm"
+          @click="startEdit"
+        >
+          <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11.5 2.5l2 2L5 13l-2.5.5L3 11l8.5-8.5z"/></svg>
+          编辑
+        </button>
+      </div>
+    </header>
+
+    <div class="main">
+      <!-- 左侧文件树 -->
+      <aside class="sidebar left">
+        <div class="panel-head">
+          <span class="panel-title">文件</span>
+        </div>
+        <div class="panel-body">
+          <FileTree :active-path="currentPath" @select="openFile" />
+        </div>
+      </aside>
+
+      <!-- 中间内容区 -->
+      <section class="content">
+        <!-- 编辑模式 -->
+        <MarkdownEditor
+          v-if="editing"
+          :content="fileContent"
+          :saving="saving"
+          @save="saveFile"
+          @cancel="cancelEdit"
+        />
+        <!-- 阅读模式 -->
+        <MarkdownView
+          v-else
+          ref="viewRef"
+          :content="fileContent"
+          :highlight-line="highlightLine"
+          @outline="onOutline"
+        />
+      </section>
+
+      <!-- 右侧大纲（当前文件一二级标题） -->
+      <aside class="sidebar right">
+        <div class="panel-head">
+          <span class="panel-title">目录</span>
+          <span v-if="outline.length" class="badge badge--muted">{{ outline.length }}</span>
+        </div>
+        <div class="panel-body">
+          <Outline
+            :items="outline"
+            :active-index="activeOutline"
+            @jump="onJump"
+          />
+        </div>
+      </aside>
+    </div>
+  </div>
 </template>
 
 <script>
 import { defineComponent, ref, nextTick } from 'vue'
-import { darkTheme, NConfigProvider, NMessageProvider, NButton, useMessage } from 'naive-ui'
 import FileTree from './components/FileTree.vue'
 import MarkdownView from './components/MarkdownView.vue'
 import MarkdownEditor from './components/MarkdownEditor.vue'
@@ -75,9 +87,6 @@ import { api } from './api'
 export default {
   name: 'App',
   components: {
-    NConfigProvider,
-    NMessageProvider,
-    NButton,
     FileTree,
     MarkdownView,
     MarkdownEditor,
@@ -85,7 +94,6 @@ export default {
     SearchBar,
   },
   setup() {
-    const message = useMessage()
     const viewRef = ref(null)
     const currentPath = ref('')
     const currentName = ref('')
@@ -95,6 +103,7 @@ export default {
     const outline = ref([])
     const activeOutline = ref(-1)
     const highlightLine = ref(0)
+    const originalContent = ref('')
 
     async function openFile(item) {
       currentPath.value = item.path
@@ -105,7 +114,8 @@ export default {
         const data = await api.getFile(item.path)
         fileContent.value = data.content
       } catch (e) {
-        message.error(e.message || '读取文件失败')
+        console.error('读取文件失败:', e)
+        alert(e.message || '读取文件失败')
       }
     }
 
@@ -119,7 +129,6 @@ export default {
         const data = await api.getFile(path)
         fileContent.value = data.content
         if (line) {
-          // 搜索定位：滚动到对应行（粗略定位到对应段落）
           nextTick(() => {
             const el = viewRef.value?.$el?.querySelector('.markdown-body')
             if (el) {
@@ -130,7 +139,8 @@ export default {
           })
         }
       } catch (e) {
-        message.error(e.message || '读取文件失败')
+        console.error('读取文件失败:', e)
+        alert(e.message || '读取文件失败')
       }
     }
 
@@ -140,18 +150,24 @@ export default {
 
     function startEdit() {
       if (!currentPath.value) return
+      originalContent.value = fileContent.value
       editing.value = true
+    }
+
+    function cancelEdit() {
+      editing.value = false
+      fileContent.value = originalContent.value
     }
 
     async function saveFile(content) {
       saving.value = true
       try {
         await api.saveFile(currentPath.value, content)
-        message.success('已保存')
         fileContent.value = content
         editing.value = false
       } catch (e) {
-        message.error(e.message || '保存失败')
+        console.error('保存失败:', e)
+        alert(e.message || '保存失败')
       } finally {
         saving.value = false
       }
@@ -166,7 +182,6 @@ export default {
     }
 
     return {
-      darkTheme,
       currentPath,
       currentName,
       fileContent,
@@ -179,6 +194,7 @@ export default {
       openFile,
       onSearchOpen,
       startEdit,
+      cancelEdit,
       saveFile,
       onOutline,
       onJump,
@@ -192,9 +208,10 @@ export default {
   height: 100%;
   display: flex;
   flex-direction: column;
+  background: var(--bg);
 }
 .topbar {
-  height: 48px;
+  height: 50px;
   display: flex;
   align-items: center;
   gap: 16px;
@@ -204,24 +221,31 @@ export default {
   flex-shrink: 0;
 }
 .brand {
-  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
   font-size: 15px;
   white-space: nowrap;
+  color: var(--text);
+}
+.brand-icon {
+  font-size: 16px;
 }
 .search-wrap {
   flex: 1;
-  max-width: 480px;
+  max-width: 440px;
 }
 .actions {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   margin-left: auto;
 }
 .current-file {
   color: var(--text-muted);
   font-size: 12px;
-  max-width: 240px;
+  max-width: 260px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -233,16 +257,36 @@ export default {
 }
 .sidebar {
   background: var(--bg-side);
-  overflow-y: auto;
+  overflow: hidden;
   flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
 }
 .sidebar.left {
-  width: 260px;
+  width: 264px;
   border-right: 1px solid var(--border);
 }
 .sidebar.right {
   width: 240px;
   border-left: 1px solid var(--border);
+}
+.panel-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px 8px;
+  flex-shrink: 0;
+}
+.panel-title {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.panel-body {
+  flex: 1;
+  overflow-y: auto;
 }
 .content {
   flex: 1;
