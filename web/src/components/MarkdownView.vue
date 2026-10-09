@@ -103,6 +103,11 @@ export default {
   margin-top: 40px;
   font-size: 15px;
 }
+@media (max-width: 768px) {
+  .markdown-view {
+    padding: 16px 16px 32px;
+  }
+}
 </style>
 
 <style>

@@ -2,6 +2,16 @@
   <div class="app">
     <!-- 顶部工具栏 -->
     <header class="topbar">
+      <!-- 手机端：文件切换按钮 -->
+      <button
+        class="icon-btn mobile-toggle"
+        :class="{ active: showLeft }"
+        @click="togglePanel('left')"
+        title="文件"
+      >
+        <svg viewBox="0 0 16 16" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1.5 3.5c0-.6.4-1 1-1h4l1.5 1.5h5.5c.6 0 1 .4 1 1v7c0 .6-.4 1-1 1h-11c-.6 0-1-.4-1-1v-8.5z"/></svg>
+      </button>
+
       <div class="brand">
         <span class="brand-icon">📖</span>
         <span class="brand-name">MD Reader</span>
@@ -23,22 +33,35 @@
           <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11.5 2.5l2 2L5 13l-2.5.5L3 11l8.5-8.5z"/></svg>
           编辑
         </button>
+
+        <!-- 手机端：目录切换按钮 -->
+        <button
+          class="icon-btn mobile-toggle"
+          :class="{ active: showRight }"
+          @click="togglePanel('right')"
+          title="目录"
+        >
+          <svg viewBox="0 0 16 16" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="4" y1="3" x2="15" y2="3"/><line x1="4" y1="8" x2="15" y2="8"/><line x1="4" y1="13" x2="15" y2="13"/><line x1="1.5" y1="3" x2="1.5" y2="3.01"/><line x1="1.5" y1="8" x2="1.5" y2="8.01"/><line x1="1.5" y1="13" x2="1.5" y2="13.01"/></svg>
+        </button>
       </div>
     </header>
 
     <div class="main">
       <!-- 左侧文件树 -->
-      <aside class="sidebar left" :style="{ width: leftWidth + 'px' }">
+      <aside class="sidebar left" :class="{ open: showLeft }" :style="leftStyle">
         <div class="panel-head">
           <span class="panel-title">文件</span>
+          <button class="icon-btn panel-close" @click="togglePanel('left')" title="关闭">
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/></svg>
+          </button>
         </div>
         <div class="panel-body">
           <FileTree :active-path="currentPath" @select="openFile" />
         </div>
       </aside>
 
-      <!-- 左侧拖拽条 -->
-      <div class="resize-handle" @mousedown="startResize('left', $event)"></div>
+      <!-- 左侧拖拽条（桌面端） -->
+      <div class="resize-handle desktop-only" @mousedown="startResize('left', $event)"></div>
 
       <!-- 中间内容区 -->
       <section class="content">
@@ -60,14 +83,17 @@
         />
       </section>
 
-      <!-- 右侧拖拽条 -->
-      <div class="resize-handle" @mousedown="startResize('right', $event)"></div>
+      <!-- 右侧拖拽条（桌面端） -->
+      <div class="resize-handle desktop-only" @mousedown="startResize('right', $event)"></div>
 
       <!-- 右侧大纲（当前文件一二级标题） -->
-      <aside class="sidebar right" :style="{ width: rightWidth + 'px' }">
+      <aside class="sidebar right" :class="{ open: showRight }" :style="rightStyle">
         <div class="panel-head">
           <span class="panel-title">目录</span>
           <span v-if="outline.length" class="badge badge--muted">{{ outline.length }}</span>
+          <button class="icon-btn panel-close" @click="togglePanel('right')" title="关闭">
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/></svg>
+          </button>
         </div>
         <div class="panel-body">
           <Outline
@@ -77,12 +103,15 @@
           />
         </div>
       </aside>
+
+      <!-- 手机端遮罩 -->
+      <div v-if="isMobile && (showLeft || showRight)" class="mobile-scrim" @click="closePanels"></div>
     </div>
   </div>
 </template>
 
 <script>
-import { defineComponent, ref } from 'vue'
+import { defineComponent, ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import FileTree from './components/FileTree.vue'
 import MarkdownView from './components/MarkdownView.vue'
 import MarkdownEditor from './components/MarkdownEditor.vue'
@@ -110,15 +139,75 @@ export default {
     const activeOutline = ref(-1)
     const highlightText = ref('')
     const originalContent = ref('')
-    // 侧栏宽度（可拖拽调整）
+
+    // 侧栏宽度（桌面端可拖拽调整）
     const leftWidth = ref(264)
     const rightWidth = ref(240)
+
+    // 响应式：手机端判定
+    const isMobile = ref(false)
+    const showLeft = ref(false)
+    const showRight = ref(false)
+
+    function checkMobile() {
+      isMobile.value = window.innerWidth <= 768
+      // 切到桌面端时默认展开两个侧栏
+      if (!isMobile.value) {
+        showLeft.value = true
+        showRight.value = true
+      } else {
+        showLeft.value = false
+        showRight.value = false
+      }
+    }
+
+    onMounted(() => {
+      checkMobile()
+      window.addEventListener('resize', checkMobile)
+    })
+
+    onBeforeUnmount(() => {
+      window.removeEventListener('resize', checkMobile)
+    })
+
+    function togglePanel(type) {
+      if (type === 'left') {
+        showLeft.value = !showLeft.value
+        // 打开文件栏时关闭目录栏（手机上互斥）
+        if (isMobile.value && showLeft.value) showRight.value = false
+      } else if (type === 'right') {
+        showRight.value = !showRight.value
+        if (isMobile.value && showRight.value) showLeft.value = false
+      }
+    }
+
+    function closePanels() {
+      showLeft.value = false
+      showRight.value = false
+    }
+
+    // 侧栏样式：桌面端用固定宽度，手机端用抽屉宽度
+    const leftStyle = computed(() => {
+      if (isMobile.value) {
+        return { width: '80%', maxWidth: '320px', position: 'absolute', left: '0', top: '0', bottom: '0', zIndex: 20 }
+      }
+      return { width: leftWidth.value + 'px' }
+    })
+
+    const rightStyle = computed(() => {
+      if (isMobile.value) {
+        return { width: '80%', maxWidth: '320px', position: 'absolute', right: '0', top: '0', bottom: '0', zIndex: 20 }
+      }
+      return { width: rightWidth.value + 'px' }
+    })
+
     let resizeType = null
     let startX = 0
     let startWidth = 0
 
-    // 拖拽调整侧栏宽度
+    // 拖拽调整侧栏宽度（仅桌面端）
     function startResize(type, e) {
+      if (isMobile.value) return
       resizeType = type
       startX = e.clientX
       startWidth = type === 'left' ? leftWidth.value : rightWidth.value
@@ -132,12 +221,10 @@ export default {
     function onResizeMove(e) {
       const delta = e.clientX - startX
       let newWidth = startWidth + delta
-      // 限制最小/最大宽度
       newWidth = Math.max(160, Math.min(600, newWidth))
       if (resizeType === 'left') {
         leftWidth.value = newWidth
       } else if (resizeType === 'right') {
-        // 右侧拖拽条向左拖动 = 右侧栏变宽
         rightWidth.value = startWidth - delta
         rightWidth.value = Math.max(160, Math.min(600, rightWidth.value))
       }
@@ -156,6 +243,8 @@ export default {
       currentName.value = item.name
       editing.value = false
       highlightText.value = ''
+      // 手机端点开文件后自动收起文件栏
+      if (isMobile.value) closePanels()
       try {
         const data = await api.getFile(item.path)
         fileContent.value = data.content
@@ -171,6 +260,7 @@ export default {
       currentName.value = name
       editing.value = false
       highlightText.value = text || ''
+      if (isMobile.value) closePanels()
       try {
         const data = await api.getFile(path)
         fileContent.value = data.content
@@ -215,6 +305,8 @@ export default {
 
     function onJump(id) {
       viewRef.value?.jumpTo(id)
+      // 手机端点标题跳转后收起目录栏
+      if (isMobile.value) closePanels()
     }
 
     return {
@@ -229,7 +321,14 @@ export default {
       viewRef,
       leftWidth,
       rightWidth,
+      isMobile,
+      showLeft,
+      showRight,
+      leftStyle,
+      rightStyle,
       startResize,
+      togglePanel,
+      closePanels,
       openFile,
       onSearchOpen,
       startEdit,
@@ -253,8 +352,8 @@ export default {
   height: 50px;
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 0 16px;
+  gap: 12px;
+  padding: 0 12px;
   background: var(--bg-side);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
@@ -274,25 +373,58 @@ export default {
 .search-wrap {
   flex: 1;
   max-width: 440px;
+  min-width: 0;
 }
 .actions {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   margin-left: auto;
+  flex-shrink: 0;
 }
 .current-file {
   color: var(--text-muted);
   font-size: 12px;
-  max-width: 260px;
+  max-width: 180px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* 图标按钮 */
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s;
+}
+.icon-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+.icon-btn.active {
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+
+/* 手机端切换按钮默认隐藏 */
+.mobile-toggle {
+  display: none;
+}
+
 .main {
   flex: 1;
   display: flex;
   overflow: hidden;
+  position: relative;
 }
 .sidebar {
   background: var(--bg-side);
@@ -300,6 +432,7 @@ export default {
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
+  transition: transform 0.25s ease;
 }
 .sidebar.left {
   border-right: 1px solid var(--border);
@@ -331,6 +464,10 @@ export default {
   letter-spacing: 0.5px;
   text-transform: uppercase;
   color: var(--text-faint);
+  flex: 1;
+}
+.panel-close {
+  display: none;
 }
 .panel-body {
   flex: 1;
@@ -340,5 +477,59 @@ export default {
   flex: 1;
   overflow: hidden;
   background: var(--bg);
+}
+
+/* 手机端遮罩 */
+.mobile-scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 15;
+}
+
+/* ===== 手机端适配 ===== */
+@media (max-width: 768px) {
+  .topbar {
+    gap: 6px;
+    padding: 0 8px;
+  }
+  .brand-name {
+    display: none;
+  }
+  .mobile-toggle {
+    display: inline-flex;
+  }
+  .desktop-only {
+    display: none;
+  }
+  .current-file {
+    max-width: 90px;
+  }
+  .panel-close {
+    display: inline-flex;
+  }
+
+  /* 侧栏变抽屉 */
+  .sidebar {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    z-index: 20;
+    box-shadow: 0 0 24px rgba(0, 0, 0, 0.5);
+  }
+  .sidebar.left {
+    left: 0;
+    transform: translateX(-100%);
+  }
+  .sidebar.left.open {
+    transform: translateX(0);
+  }
+  .sidebar.right {
+    right: 0;
+    transform: translateX(100%);
+  }
+  .sidebar.right.open {
+    transform: translateX(0);
+  }
 }
 </style>
