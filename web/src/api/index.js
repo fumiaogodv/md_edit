@@ -40,4 +40,20 @@ export const api = {
   search(q) {
     return http.get('/api/search', { params: { q } }).then((r) => r.data)
   },
+  // 二进制文件（PDF/图片）的访问 URL
+  getRawFileUrl(path) {
+    return `/api/file/raw/${encodePath(path)}`
+  },
+  // 读取某文件的阅读进度
+  getProgress(path) {
+    return http.get(`/api/progress/${encodePath(path)}`).then((r) => r.data)
+  },
+  // 保存某文件的阅读进度
+  saveProgress(path, entry) {
+    return http.put(`/api/progress/${encodePath(path)}`, { entry }).then((r) => r.data)
+  },
+  // 进度接口的 URL（用于 sendBeacon）
+  getProgressUrl(path) {
+    return `/api/progress/${encodePath(path)}`
+  },
 }

@@ -7,13 +7,15 @@ from .path_util import safe_resolve, to_rel_path
 def _node(p: Path) -> dict:
     """把文件/目录 Path 转成前端可用的节点结构。"""
     is_dir = p.is_dir()
+    suffix = "" if is_dir else p.suffix.lower()
     return {
         "name": p.name,
         "type": "dir" if is_dir else "file",
         "path": to_rel_path(p),
-        "ext": ("" if is_dir else p.suffix.lower()),
+        "ext": suffix,
         "size": (0 if is_dir else p.stat().st_size),
-        "editable": (not is_dir) and p.suffix.lower() in config.EDITABLE_EXTS,
+        "editable": (not is_dir) and suffix in config.EDITABLE_EXTS,
+        "readable": (not is_dir) and suffix in config.READABLE_EXTS,
     }
 
 

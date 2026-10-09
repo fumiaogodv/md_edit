@@ -26,7 +26,7 @@
           {{ currentName }}
         </span>
         <button
-          v-if="currentPath && !editing"
+          v-if="currentPath && !editing && isEditableFile"
           class="btn btn--primary btn--sm"
           @click="startEdit"
         >
@@ -73,13 +73,28 @@
           @save="saveFile"
           @cancel="cancelEdit"
         />
-        <!-- 阅读模式 -->
+        <!-- PDF 阅读 -->
+        <PdfViewer
+          v-else-if="isPdf"
+          :path="currentPath"
+          :initial-page="restoreProgress?.page || 1"
+          @progress="onProgress"
+        />
+        <!-- 图片查看 -->
+        <ImageViewer
+          v-else-if="isImage"
+          :path="currentPath"
+        />
+        <!-- 阅读模式（md/txt） -->
         <MarkdownView
           v-else
           ref="viewRef"
           :content="fileContent"
           :highlight-text="highlightText"
+          :base-dir="baseDir"
+          :restore="restoreProgress"
           @outline="onOutline"
+          @progress="onProgress"
         />
       </section>
 
@@ -115,6 +130,8 @@ import { defineComponent, ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import FileTree from './components/FileTree.vue'
 import MarkdownView from './components/MarkdownView.vue'
 import MarkdownEditor from './components/MarkdownEditor.vue'
+import PdfViewer from './components/PdfViewer.vue'
+import ImageViewer from './components/ImageViewer.vue'
 import Outline from './components/Outline.vue'
 import SearchBar from './components/SearchBar.vue'
 import { api } from './api'
@@ -125,6 +142,8 @@ export default {
     FileTree,
     MarkdownView,
     MarkdownEditor,
+    PdfViewer,
+    ImageViewer,
     Outline,
     SearchBar,
   },
@@ -139,6 +158,13 @@ export default {
     const activeOutline = ref(-1)
     const highlightText = ref('')
     const originalContent = ref('')
+    // 当前文件的恢复进度（从后端读取）
+    const restoreProgress = ref(null)
+
+    // 进度上报防抖
+    let saveTimer = null
+    // 待保存的进度（切换文件/离开时保存）
+    let pendingProgress = null
 
     // 侧栏宽度（桌面端可拖拽调整）
     const leftWidth = ref(264)
@@ -164,11 +190,26 @@ export default {
     onMounted(() => {
       checkMobile()
       window.addEventListener('resize', checkMobile)
+      window.addEventListener('beforeunload', onBeforeUnload)
     })
 
     onBeforeUnmount(() => {
       window.removeEventListener('resize', checkMobile)
+      window.removeEventListener('beforeunload', onBeforeUnload)
     })
+
+    // 离开页面时保存进度（用 sendBeacon 尽量送达）
+    function onBeforeUnload() {
+      if (!currentPath.value || !pendingProgress) return
+      const entry = { ...pendingProgress, updatedAt: Math.floor(Date.now() / 1000) }
+      const url = api.getProgressUrl(currentPath.value)
+      const blob = new Blob([JSON.stringify({ entry })], { type: 'application/json' })
+      try {
+        navigator.sendBeacon(url, blob)
+      } catch (e) {
+        /* ignore */
+      }
+    }
 
     function togglePanel(type) {
       if (type === 'left') {
@@ -192,6 +233,23 @@ export default {
         return { width: '80%', maxWidth: '320px', position: 'absolute', left: '0', top: '0', bottom: '0', zIndex: 20 }
       }
       return { width: leftWidth.value + 'px' }
+    })
+
+    // 文件类型判断
+    const isPdf = computed(() => currentPath.value.toLowerCase().endsWith('.pdf'))
+    const isImage = computed(() => {
+      const p = currentPath.value.toLowerCase()
+      return ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.ico'].some((e) => p.endsWith(e))
+    })
+    const isEditableFile = computed(() => {
+      const p = currentPath.value.toLowerCase()
+      return ['.md', '.markdown', '.txt'].some((e) => p.endsWith(e))
+    })
+    // 当前文件所在目录（用于图片相对路径解析）
+    const baseDir = computed(() => {
+      const p = currentPath.value
+      const idx = p.lastIndexOf('/')
+      return idx >= 0 ? p.slice(0, idx) : ''
     })
 
     const rightStyle = computed(() => {
@@ -239,31 +297,46 @@ export default {
     }
 
     async function openFile(item) {
+      await flushBeforeSwitch()
       currentPath.value = item.path
       currentName.value = item.name
       editing.value = false
       highlightText.value = ''
+      restoreProgress.value = null
       // 手机端点开文件后自动收起文件栏
       if (isMobile.value) closePanels()
-      try {
-        const data = await api.getFile(item.path)
-        fileContent.value = data.content
-      } catch (e) {
-        console.error('读取文件失败:', e)
-        alert(e.message || '读取文件失败')
-      }
+      await loadCurrentFile()
     }
 
     async function openByPath(path, line = 0, text = '') {
+      await flushBeforeSwitch()
       const name = path.split('/').pop()
       currentPath.value = path
       currentName.value = name
       editing.value = false
       highlightText.value = text || ''
+      restoreProgress.value = null
       if (isMobile.value) closePanels()
+      await loadCurrentFile()
+    }
+
+    // 加载当前文件内容（按类型分发）
+    async function loadCurrentFile() {
+      const path = currentPath.value
+      if (!path) return
       try {
-        const data = await api.getFile(path)
-        fileContent.value = data.content
+        // 读取进度（md/txt/pdf 都读；图片不需要）
+        if (isEditableFile.value || isPdf.value) {
+          const prog = await api.getProgress(path)
+          restoreProgress.value = prog.entry || null
+        }
+        // md/txt 才读文本内容
+        if (isEditableFile.value) {
+          const data = await api.getFile(path)
+          fileContent.value = data.content
+        } else if (isImage.value || isPdf.value) {
+          fileContent.value = ''
+        }
       } catch (e) {
         console.error('读取文件失败:', e)
         alert(e.message || '读取文件失败')
@@ -272,6 +345,34 @@ export default {
 
     function onSearchOpen(path, line, text) {
       openByPath(path, line, text)
+    }
+
+    // 接收子组件上报的进度，防抖保存到后端
+    function onProgress(entry) {
+      pendingProgress = entry
+      if (saveTimer) clearTimeout(saveTimer)
+      saveTimer = setTimeout(() => {
+        flushProgress()
+      }, 1000)
+    }
+
+    // 真正写进度到后端
+    async function flushProgress() {
+      if (!currentPath.value || !pendingProgress) return
+      const path = currentPath.value
+      const entry = { ...pendingProgress, updatedAt: Math.floor(Date.now() / 1000) }
+      pendingProgress = null
+      try {
+        await api.saveProgress(path, entry)
+      } catch (e) {
+        console.error('保存进度失败:', e)
+      }
+    }
+
+    // 切换文件前，先把上一个文件的进度存掉
+    async function flushBeforeSwitch() {
+      if (saveTimer) clearTimeout(saveTimer)
+      await flushProgress()
     }
 
     function startEdit() {
@@ -326,11 +427,17 @@ export default {
       showRight,
       leftStyle,
       rightStyle,
+      isPdf,
+      isImage,
+      isEditableFile,
+      baseDir,
+      restoreProgress,
       startResize,
       togglePanel,
       closePanels,
       openFile,
       onSearchOpen,
+      onProgress,
       startEdit,
       cancelEdit,
       saveFile,

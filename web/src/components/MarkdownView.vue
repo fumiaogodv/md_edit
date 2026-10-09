@@ -1,12 +1,12 @@
 <template>
-  <div class="markdown-view">
+  <div class="markdown-view" ref="viewEl" @scroll.passive="onScroll">
     <div v-if="!content" class="empty-tip">选择左侧文件查看内容</div>
     <div v-else ref="body" class="markdown-body" v-html="html"></div>
   </div>
 </template>
 
 <script>
-import { defineComponent, ref, watch, nextTick } from 'vue'
+import { defineComponent, ref, watch, nextTick, onBeforeUnmount } from 'vue'
 import { renderMarkdown } from '../utils/markdown'
 
 export default {
@@ -14,19 +14,27 @@ export default {
   props: {
     content: { type: String, default: '' },
     highlightText: { type: String, default: '' },
+    baseDir: { type: String, default: '' },
+    // 恢复用的进度：{ anchor: string } 或 { scroll: number }
+    restore: { type: Object, default: null },
   },
-  emits: ['outline'],
+  emits: ['outline', 'progress'],
   setup(props, { emit }) {
     const body = ref(null)
+    const viewEl = ref(null)
     const html = ref('')
     let highlightedEl = null
+    let scrollTimer = null
+    let restored = false
 
     watch(
       () => props.content,
       (val) => {
-        html.value = renderMarkdown(val)
+        html.value = renderMarkdown(val, props.baseDir)
+        restored = false
         nextTick(() => {
           extractOutline()
+          restorePosition()
           scrollToHighlight()
         })
       }
@@ -44,6 +52,32 @@ export default {
         })
       })
       emit('outline', outline)
+    }
+
+    // 恢复阅读位置：优先标题锚点，其次滚动比例
+    function restorePosition() {
+      if (!body.value || !props.restore || restored) return
+      const r = props.restore
+      if (r.anchor) {
+        // 找标题锚点（匹配 id 或文本）
+        let el = body.value.querySelector(`[id="${CSS.escape(r.anchor)}"]`)
+        if (!el) {
+          // 退而求其次按文本匹配标题
+          const heads = body.value.querySelectorAll('h1, h2, h3, h4')
+          for (const h of heads) {
+            if (h.textContent.trim() === r.anchor.trim()) { el = h; break }
+          }
+        }
+        if (el) {
+          el.scrollIntoView({ block: 'start' })
+          restored = true
+          return
+        }
+      }
+      if (typeof r.scroll === 'number' && r.scroll > 0) {
+        viewEl.value.scrollTop = r.scroll * (viewEl.value.scrollHeight - viewEl.value.clientHeight)
+        restored = true
+      }
     }
 
     // 搜索定位：根据命中行文本精确匹配 DOM 元素，滚动 + 高亮
@@ -80,13 +114,43 @@ export default {
       }
     }
 
+    // 滚动时上报进度（防抖）
+    function onScroll() {
+      if (scrollTimer) clearTimeout(scrollTimer)
+      scrollTimer = setTimeout(() => {
+        reportProgress()
+      }, 800)
+    }
+
+    // 计算当前进度：找当前视口顶部的最近标题作为锚点
+    function reportProgress() {
+      if (!body.value || !props.content) return
+      const viewEl2 = viewEl.value
+      const topLine = viewEl2.scrollTop
+      // 找当前滚动位置之上最近的标题
+      const heads = body.value.querySelectorAll('h1, h2, h3, h4')
+      let anchor = ''
+      for (const h of heads) {
+        if (h.offsetTop <= topLine + 4) anchor = h.textContent.trim()
+        else break
+      }
+      // 滚动比例（0~1）
+      const scrollable = viewEl2.scrollHeight - viewEl2.clientHeight
+      const scroll = scrollable > 0 ? viewEl2.scrollTop / scrollable : 0
+      emit('progress', { type: 'md', anchor: anchor || null, scroll })
+    }
+
     // 暴露跳转方法给父组件
     function jumpTo(id) {
       const el = body.value?.querySelector(`[id="${CSS.escape(id)}"]`)
       el?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }
 
-    return { body, html, jumpTo }
+    onBeforeUnmount(() => {
+      if (scrollTimer) clearTimeout(scrollTimer)
+    })
+
+    return { body, viewEl, html, jumpTo }
   },
 }
 </script>

@@ -16,6 +16,14 @@ def read_file(relative_path: str) -> str:
     raise UnicodeDecodeError("无法识别文件编码")
 
 
+def read_raw_file(relative_path: str) -> bytes:
+    """读取二进制文件（PDF、图片等）的原始字节。"""
+    target = safe_resolve(relative_path)
+    if not target.is_file():
+        raise FileNotFoundError("文件不存在")
+    return target.read_bytes()
+
+
 def write_file(relative_path: str, content: str) -> None:
     """写回文件，仅允许可编辑扩展名。"""
     target = safe_resolve(relative_path)

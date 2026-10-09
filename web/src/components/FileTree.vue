@@ -31,13 +31,15 @@
         <div
           v-else
           class="tree-row file"
-          :class="{ active: item.path === activePath, disabled: !item.editable }"
+          :class="{ active: item.path === activePath, disabled: !item.readable }"
           :style="{ paddingLeft: 8 + depth * 16 + 20 + 'px' }"
-          :title="item.editable ? item.path : item.name + '（不支持预览）'"
+          :title="item.readable ? item.path : item.name + '（不支持预览）'"
           @click="onFileClick(item)"
         >
           <span class="icon">
-            <svg v-if="item.editable" viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M4 1.5h6.5L13 4v10.5c0 .6-.4 1-1 1H4c-.6 0-1-.4-1-1v-12c0-.6.4-1 1-1z"/><path d="M10.5 1.5V4H13"/></svg>
+            <svg v-if="isPdf(item)" viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M4 1.5h8c.6 0 1 .4 1 1v11c0 .6-.4 1-1 1H4c-.6 0-1-.4-1-1v-11c0-.6.4-1 1-1z"/><path d="M6.5 5.5h3M6.5 8h3M6.5 10.5h2"/></svg>
+            <svg v-else-if="isImage(item)" viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="2" y="2.5" width="12" height="11" rx="1.5"/><circle cx="6" cy="6.5" r="1.5"/><path d="M2.5 12l3.5-3.5 2.5 2.5 2-2 3 3"/></svg>
+            <svg v-else-if="item.readable" viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M4 1.5h6.5L13 4v10.5c0 .6-.4 1-1 1H4c-.6 0-1-.4-1-1v-12c0-.6.4-1 1-1z"/><path d="M10.5 1.5V4H13"/></svg>
             <svg v-else viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M4 1.5h8c.6 0 1 .4 1 1v11c0 .6-.4 1-1 1H4c-.6 0-1-.4-1-1v-11c0-.6.4-1 1-1z"/><path d="M6 6h4M6 9h4"/></svg>
           </span>
           <span class="name">{{ item.name }}</span>
@@ -82,7 +84,13 @@ export default {
       item.open = !item.open
     },
     onFileClick(item) {
-      if (item.editable) this.$emit('select', item)
+      if (item.readable) this.$emit('select', item)
+    },
+    isPdf(item) {
+      return item.ext === '.pdf'
+    },
+    isImage(item) {
+      return ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.ico'].includes(item.ext)
     },
   },
 }

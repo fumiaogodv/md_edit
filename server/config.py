@@ -14,6 +14,16 @@ EDITABLE_EXTS = {".md", ".markdown", ".txt"}
 # 搜索时扫描的扩展名
 SEARCHABLE_EXTS = {".md", ".markdown", ".txt"}
 
+# 可在阅读器中打开（渲染/预览）的扩展名（含只读类型）
+READABLE_EXTS = {
+    ".md", ".markdown", ".txt",   # 文本
+    ".pdf",                        # PDF
+    ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp", ".ico",  # 图片
+}
+
+# 进度记录文件名（存放在挂载根目录下，隐藏文件）
+PROGRESS_FILE = ".md-reader-progress.json"
+
 # 隐藏文件/目录前缀（跳过）
 IGNORE_PREFIXES = (".",)
 

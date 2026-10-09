@@ -147,7 +147,55 @@ md.renderer.rules.math_block = (tokens, idx) =>
 md.renderer.rules.math_inline = (tokens, idx) =>
   renderKatexInline(tokens[idx].content)
 
-export function renderMarkdown(content) {
+// ===== 图片相对路径重写 =====
+// md 里图片是相对路径（如 assets/xxx.png，相对于 md 文件所在目录），
+// 需要重写为 /api/file/raw/<文件目录>/<相对路径> 才能正确加载。
+let currentBaseDir = ''  // 当前渲染文件所在目录（相对 ROOT_DIR，正斜杠，不含文件名）
+
+// 把图片 src 重写为可访问的 raw 接口地址
+function rewriteImageSrc(src) {
+  if (!src) return src
+  // 已是绝对 http/https 或 data: 或 /api/ 开头，直接返回
+  if (/^(https?:|data:|blob:|\/api\/)/i.test(src)) return src
+  // 去掉锚点/查询
+  const clean = src.split('#')[0].split('?')[0]
+  if (!currentBaseDir) return src
+  // 拼接：baseDir + src，归一化 ../ 和 ./
+  const joined = joinPath(currentBaseDir, clean)
+  return `/api/file/raw/${encodeSegments(joined)}`
+}
+
+// 拼接并归一化路径（正斜杠）
+function joinPath(base, rel) {
+  const parts = (base + '/' + rel).split('/')
+  const out = []
+  for (const p of parts) {
+    if (p === '' || p === '.') continue
+    if (p === '..') { out.pop(); continue }
+    out.push(p)
+  }
+  return out.join('/')
+}
+
+// 按段编码，保留斜杠（与 api 层 encodePath 一致）
+function encodeSegments(path) {
+  return path.split('/').map((s) => encodeURIComponent(s)).join('/')
+}
+
+// 覆盖 image 渲染器，重写 src
+const defaultImageRender = md.renderer.rules.image || ((tokens, idx, options, env, self) => self.renderToken(tokens, idx, options))
+md.renderer.rules.image = (tokens, idx, options, env, self) => {
+  const token = tokens[idx]
+  const srcIndex = token.attrIndex('src')
+  if (srcIndex >= 0) {
+    const newSrc = rewriteImageSrc(token.attrs[srcIndex][1])
+    token.attrs[srcIndex][1] = newSrc
+  }
+  return defaultImageRender(tokens, idx, options, env, self)
+}
+
+export function renderMarkdown(content, baseDir = '') {
+  currentBaseDir = baseDir
   return md.render(content || '')
 }
 
