@@ -24,6 +24,19 @@ def read_raw_file(relative_path: str) -> bytes:
     return target.read_bytes()
 
 
+def file_etag(relative_path: str) -> str:
+    """生成文件的 ETag（mtime 纳秒 + size），用于 HTTP 条件请求缓存。
+
+    用 mtime+size 而非全内容 md5：生成几乎零成本，对「文件是否变化」的判断足够。
+    文件一旦被写入，mtime 会更新，ETag 随之变化，缓存自动失效。
+    """
+    target = safe_resolve(relative_path)
+    if not target.is_file():
+        raise FileNotFoundError("文件不存在")
+    stat = target.stat()
+    return f'"{stat.st_mtime_ns}-{stat.st_size}"'
+
+
 def write_file(relative_path: str, content: str) -> None:
     """写回文件，仅允许可编辑扩展名。"""
     target = safe_resolve(relative_path)

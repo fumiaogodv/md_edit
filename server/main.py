@@ -1,12 +1,12 @@
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import config
-from .service import file, progress, search, tree
+from .service import file, fs, progress, search, tree
 
 app = FastAPI(title="MD Reader", version="1.0.0")
 
@@ -17,6 +17,11 @@ class SaveBody(BaseModel):
 
 class ProgressBody(BaseModel):
     entry: dict
+
+
+class CreateBody(BaseModel):
+    name: str
+    content: str = ""
 
 
 # 二进制文件的 MIME 类型映射（用于 /api/file/raw 返回正确的 Content-Type）
@@ -42,9 +47,44 @@ def get_tree(path: str = ""):
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@app.post("/api/tree/{path:path}")
+def create_dir(path: str, body: CreateBody):
+    """在 path 目录下创建子文件夹。"""
+    try:
+        return fs.create_dir(path, body.name)
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/file/{path:path}")
+def create_file(path: str, body: CreateBody):
+    """在 path 目录下创建文件（仅 .md/.markdown/.txt）。"""
+    try:
+        return fs.create_file(path, body.name, body.content)
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @app.get("/api/file/raw/{path:path}")
-def get_raw_file(path: str):
-    """返回二进制文件（PDF/图片）的原始字节。"""
+def get_raw_file(path: str, request: Request, response: Response):
+    """返回二进制文件（PDF/图片）的原始字节，支持 ETag 条件请求缓存。"""
+    try:
+        etag = file.file_etag(path)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    response.headers["ETag"] = etag
+    response.headers["Cache-Control"] = "no-cache"
+    if request.headers.get("If-None-Match") == etag:
+        response.status_code = 304
+        return response
+
     try:
         data = file.read_raw_file(path)
     except FileNotFoundError as e:
@@ -54,11 +94,24 @@ def get_raw_file(path: str):
 
     suffix = Path(path).suffix.lower()
     mime = _MIME_TYPES.get(suffix, "application/octet-stream")
-    return Response(content=data, media_type=mime)
+    return Response(content=data, media_type=mime, headers={"ETag": etag, "Cache-Control": "no-cache"})
 
 
 @app.get("/api/file/{path:path}")
-def get_file(path: str):
+def get_file(path: str, request: Request, response: Response):
+    try:
+        etag = file.file_etag(path)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    response.headers["ETag"] = etag
+    response.headers["Cache-Control"] = "no-cache"
+    if request.headers.get("If-None-Match") == etag:
+        response.status_code = 304
+        return response
+
     try:
         content = file.read_file(path)
     except FileNotFoundError as e:

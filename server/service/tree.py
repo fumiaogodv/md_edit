@@ -4,7 +4,7 @@ from .. import config
 from .path_util import safe_resolve, to_rel_path
 
 
-def _node(p: Path) -> dict:
+def to_node(p: Path) -> dict:
     """把文件/目录 Path 转成前端可用的节点结构。"""
     is_dir = p.is_dir()
     suffix = "" if is_dir else p.suffix.lower()
@@ -30,7 +30,7 @@ def list_dir(relative_path: str = "") -> list[dict]:
         if p.name.startswith(config.IGNORE_PREFIXES):
             continue
         try:
-            items.append(_node(p))
+            items.append(to_node(p))
         except OSError:
             continue
 

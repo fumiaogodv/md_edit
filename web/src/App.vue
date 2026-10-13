@@ -56,7 +56,7 @@
           </button>
         </div>
         <div class="panel-body">
-          <FileTree :active-path="currentPath" @select="openFile" />
+          <FileTree :active-path="currentPath" @select="openFile" @create-file="onCreateFile" />
         </div>
       </aside>
 
@@ -381,6 +381,20 @@ export default {
       editing.value = true
     }
 
+    // 新建文件后：打开它并直接进入编辑态
+    function onCreateFile(node) {
+      if (!node || !node.path) return
+      currentPath.value = node.path
+      currentName.value = node.name
+      fileContent.value = ''
+      highlightText.value = ''
+      restoreProgress.value = null
+      if (isMobile.value) closePanels()
+      // 直接进入编辑态，用户立即写内容
+      originalContent.value = ''
+      editing.value = true
+    }
+
     function cancelEdit() {
       editing.value = false
       fileContent.value = originalContent.value
@@ -439,6 +453,7 @@ export default {
       onSearchOpen,
       onProgress,
       startEdit,
+      onCreateFile,
       cancelEdit,
       saveFile,
       onOutline,
