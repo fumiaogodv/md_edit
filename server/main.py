@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import Response
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -152,7 +152,20 @@ def do_search(q: str = ""):
     return {"query": q, "results": search.search(q)}
 
 
-# 前端静态托管（放在最后，避免吞掉 /api 路由）
+# 前端静态托管 + SPA fallback
+# 前端用 history 路由（网址直接拼文件路径，如 /数据结构/3图/总文件.md），
+# 刷新时任意非 /api 路径都要返回 index.html，交给前端路由还原状态。
 _static = Path(config.STATIC_DIR)
 if _static.is_dir():
-    app.mount("/", StaticFiles(directory=str(_static), html=True), name="static")
+    _index = _static / "index.html"
+
+    # 先挂载静态资源目录（assets/ 等），命中真实文件就返回
+    app.mount("/assets", StaticFiles(directory=str(_static / "assets")), name="assets")
+
+    # catch-all：所有未命中的路径（含根路径）都返回 index.html
+    @app.get("/{full_path:path}")
+    def spa_fallback(full_path: str):
+        if _index.is_file():
+            return FileResponse(_index)
+        return {"detail": "前端资源未构建"}
+

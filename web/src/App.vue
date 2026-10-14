@@ -136,6 +136,24 @@ import Outline from './components/Outline.vue'
 import SearchBar from './components/SearchBar.vue'
 import { api } from './api'
 
+// ===== history 路由：文件路径 <-> URL 双向同步 =====
+// 目标效果：点击文件后网址变成 /数据结构/3图/总文件.md（无 #），刷新可直接还原。
+function pathToUrl(path) {
+  if (!path) return '/'
+  // 按段编码（保留 / 分隔），中文等特殊字符安全
+  return '/' + path.split('/').map((s) => encodeURIComponent(s)).join('/')
+}
+
+function urlToPath(pathname) {
+  const raw = pathname.replace(/^\/+/, '')  // 去掉开头斜杠
+  if (!raw) return ''
+  try {
+    return raw.split('/').map((s) => decodeURIComponent(s)).join('/')
+  } catch (e) {
+    return raw
+  }
+}
+
 export default {
   name: 'App',
   components: {
@@ -166,6 +184,9 @@ export default {
     // 待保存的进度（切换文件/离开时保存）
     let pendingProgress = null
 
+    // 是否正在程序内同步 URL（防止 pushState 触发 popstate 造成重复加载）
+    let syncingUrl = false
+
     // 侧栏宽度（桌面端可拖拽调整）
     const leftWidth = ref(264)
     const rightWidth = ref(240)
@@ -191,12 +212,38 @@ export default {
       checkMobile()
       window.addEventListener('resize', checkMobile)
       window.addEventListener('beforeunload', onBeforeUnload)
+      window.addEventListener('popstate', onPopState)
+      // 初始化：读 URL 还原上次打开的文件
+      const initialPath = urlToPath(window.location.pathname)
+      if (initialPath) {
+        openByPath(initialPath)
+      }
     })
 
     onBeforeUnmount(() => {
       window.removeEventListener('resize', checkMobile)
       window.removeEventListener('beforeunload', onBeforeUnload)
+      window.removeEventListener('popstate', onPopState)
     })
+
+    // 浏览器前进/后退时，根据 URL 打开对应文件
+    function onPopState() {
+      if (syncingUrl) return
+      const p = urlToPath(window.location.pathname)
+      if (p && p !== currentPath.value) {
+        openByPath(p)
+      }
+    }
+
+    // 把当前文件路径同步到 URL（history.pushState，不刷新页面）
+    function syncUrl() {
+      const target = pathToUrl(currentPath.value)
+      if (window.location.pathname === target) return
+      syncingUrl = true
+      history.pushState(null, '', target)
+      // 下一帧再放开守卫
+      setTimeout(() => { syncingUrl = false }, 0)
+    }
 
     // 离开页面时保存进度（用 sendBeacon 尽量送达）
     function onBeforeUnload() {
@@ -306,6 +353,7 @@ export default {
       // 手机端点开文件后自动收起文件栏
       if (isMobile.value) closePanels()
       await loadCurrentFile()
+      syncUrl()
     }
 
     async function openByPath(path, line = 0, text = '') {
@@ -318,6 +366,7 @@ export default {
       restoreProgress.value = null
       if (isMobile.value) closePanels()
       await loadCurrentFile()
+      syncUrl()
     }
 
     // 加载当前文件内容（按类型分发）
@@ -393,6 +442,7 @@ export default {
       // 直接进入编辑态，用户立即写内容
       originalContent.value = ''
       editing.value = true
+      syncUrl()
     }
 
     function cancelEdit() {
